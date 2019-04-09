@@ -43,6 +43,10 @@ type ConfigFileHook struct {
 	file string
 }
 
+func CreateFileHook(file string) ConfigFileHook {
+	return ConfigFileHook{file: file}
+}
+
 func (self ConfigFileHook) run(target interface{}) {
 	file, err := os.OpenFile(self.file, os.O_RDONLY, os.ModePerm)
 	if err != nil {
