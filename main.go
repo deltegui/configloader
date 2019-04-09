@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"reflect"
+	"strconv"
 
 	"github.com/golang-collections/collections/queue"
 )
@@ -78,10 +79,54 @@ func (self ParamsHook) run(target interface{}) {
 		currentField := targetValue.Field(i)
 		if currentField.IsValid() && currentField.CanAddr() && currentField.CanSet() {
 			if len(*self.flags[i]) > 0 {
-				currentField.SetString(*self.flags[i])
+				setField(currentField, *self.flags[i])
 			}
 		}
 	}
+}
+
+func setField(field reflect.Value, flag string) {
+	switch field.Type().Name() {
+	default:
+		field.SetString(flag)
+		break
+	case "int":
+	case "int16":
+	case "int32":
+	case "int64":
+		i, err := strconv.Atoi(flag)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		field.SetInt(int64(i))
+		break
+	case "float":
+	case "float64":
+		i, err := strconv.ParseFloat(flag, 64)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		field.SetFloat(i)
+		break
+	case "bool":
+		i, err := strconv.ParseBool(flag)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		field.SetBool(i)
+		break
+	case "uint":
+	case "uint16":
+	case "uint32":
+	case "uint64":
+		i, err := strconv.ParseUint(flag, 10, 64)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		field.SetUint(i)
+		break
+	}
+
 }
 
 func (self *ParamsHook) readFlagsFromStructMetadata(target interface{}) {
