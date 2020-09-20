@@ -134,42 +134,30 @@ func setField(field reflect.Value, rawValue string) {
 	switch field.Type().Name() {
 	default:
 		field.SetString(rawValue)
-		break
-	case "int":
-	case "int16":
-	case "int32":
-	case "int64":
+	case "int", "int16", "int32", "int64":
 		i, err := strconv.Atoi(rawValue)
 		if err != nil {
 			log.Fatalln(err)
 		}
 		field.SetInt(int64(i))
-		break
-	case "float":
-	case "float64":
+	case "float", "float64":
 		i, err := strconv.ParseFloat(rawValue, bitSize)
 		if err != nil {
 			log.Fatalln(err)
 		}
 		field.SetFloat(i)
-		break
 	case "bool":
 		i, err := strconv.ParseBool(rawValue)
 		if err != nil {
 			log.Fatalln(err)
 		}
 		field.SetBool(i)
-		break
-	case "uint":
-	case "uint16":
-	case "uint32":
-	case "uint64":
+	case "uint", "uint16", "uint32", "uint64":
 		i, err := strconv.ParseUint(rawValue, base, bitSize)
 		if err != nil {
 			log.Fatalln(err)
 		}
 		field.SetUint(i)
-		break
 	}
 
 }
