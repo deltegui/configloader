@@ -168,6 +168,9 @@ func foreachField(target interface{}, runAction func(currentField)) {
 	for i := 0; i < targetValue.NumField(); i++ {
 		currentValue := targetValue.Field(i)
 		currentType := targetType.Field(i)
+		if currentType.Type.Kind() == reflect.Struct {
+			foreachField(currentValue.Elem(), runAction)
+		}
 		if currentValue.IsValid() && currentValue.CanAddr() && currentValue.CanSet() {
 			currentName := getFieldName(currentType)
 			runAction(currentField{
