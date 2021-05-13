@@ -4,9 +4,16 @@ Load configuration from command line, file or env.
 ## How to use
 Create your configuration struct, for example:
 ```go
+type DBConfig struct {
+	Name string `configName:"Name"`
+	User string `configName:"User"`
+	Password string `configName:"Password"`
+}
+
 type MyConfig struct {
-	ListenURL string `paramName:"url"`
-	Database string `paramName:"db"`
+	ListenURL string `configName:"url"`
+	Redis DBConfig `configPrefix:"redis"`
+	Mysql DBConfif `configPrefix:"mysql"`
 }
 ```
 
@@ -37,9 +44,18 @@ Having in config.json this
 ```json
 {
     "ListenURL": "localhost:8080",
-    "Database": "blabla db connection",
+    "Mysql": {
+		"Name": "mysql",
+		"User": "user",
+		"Password": "pass"
+	},
+	"Redis": {
+		"Name": "redis",
+		"User": "user",
+		"Password": "pass"
+	}
 }
 ```
 
-And running this example with `CONFIG_URL=localhost:9000 go run ./main.go -db mysql`
-Will return this struct `{localhost:9000 mysql}`
+And running this example with `CONFIG_URL=localhost:9000 CONFIG_REDISPASS=ohh go run ./main.go -mysqlName mydb -mysqlUser root -mysqlPassword root -redisName redis -redisUser redisu -redisPassword reidspass`
+Will return this struct `{localhost:9000 {mydb root root} {redis redisu ohh}}`

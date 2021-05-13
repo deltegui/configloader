@@ -14,20 +14,29 @@ import (
 )
 
 type currentField struct {
-	value reflect.Value
-	name  string
-	index int
+	original reflect.StructField
+	value    reflect.Value
+	name     string
+	index    int
 }
 
+// Hook is something that loads data from a source
+// and stores it into your configuration struct
+// (here is an interface)
 type Hook interface {
 	run(interface{})
 }
 
+// ConfigLoader loads data into a target (a config struct).
+// Data can come from different hooks.
 type ConfigLoader struct {
 	hooks  *queue.Queue
 	target interface{}
 }
 
+// NewConfigLoaderFor creates a ConfigLoader for a target
+// struct, where data will be loaded. You should pass
+// a pointer to a empty struct instance.
 func NewConfigLoaderFor(target interface{}) *ConfigLoader {
 	return &ConfigLoader{
 		hooks:  queue.New(),
@@ -35,29 +44,33 @@ func NewConfigLoaderFor(target interface{}) *ConfigLoader {
 	}
 }
 
-func (self *ConfigLoader) AddHook(hook Hook) *ConfigLoader {
-	self.hooks.Enqueue(hook)
-	return self
+// AddHook adds a new source to load data from.
+func (loader *ConfigLoader) AddHook(hook Hook) *ConfigLoader {
+	loader.hooks.Enqueue(hook)
+	return loader
 }
 
-func (self ConfigLoader) Retrieve() interface{} {
-	for self.hooks.Len() > 0 {
-		hook := self.hooks.Dequeue().(Hook)
-		hook.run(self.target)
+// Retrieve loaded struct. It'll return a pointer to your struct.
+func (loaded ConfigLoader) Retrieve() interface{} {
+	for loaded.hooks.Len() > 0 {
+		hook := loaded.hooks.Dequeue().(Hook)
+		hook.run(loaded.target)
 	}
-	return self.target
+	return loaded.target
 }
 
+// ConfigFileHook will load data from a JSON file.
 type ConfigFileHook struct {
 	file string
 }
 
+// CreateFileHook passing JSON file.
 func CreateFileHook(file string) ConfigFileHook {
 	return ConfigFileHook{file: file}
 }
 
-func (self ConfigFileHook) run(target interface{}) {
-	file, err := os.OpenFile(self.file, os.O_RDONLY, os.ModePerm)
+func (hook ConfigFileHook) run(target interface{}) {
+	file, err := os.OpenFile(hook.file, os.O_RDONLY, os.ModePerm)
 	if err != nil {
 		log.Fatalln("Error while reading config file: ", err)
 	}
@@ -69,61 +82,58 @@ func (self ConfigFileHook) run(target interface{}) {
 	}
 }
 
+// ParamsHook will load data from command line params.
 type ParamsHook struct {
 	flags []*string
 }
 
+// CreateParamsHook creates a hook which loads
+// command line params.
 func CreateParamsHook() ParamsHook {
 	return ParamsHook{
-		flags: make([]*string, 0, 0),
+		flags: make([]*string, 0),
 	}
 }
 
-func (self ParamsHook) run(target interface{}) {
-	self.readFlagsFromStructMetadata(target)
+func (hook ParamsHook) run(target interface{}) {
+	hook.readFlagsFromStructMetadata(target)
 	flag.Parse()
+	i := 0
 	foreachField(target, func(field currentField) {
-		if len(*self.flags[field.index]) > 0 {
-			setField(field.value, *self.flags[field.index])
+		if i < len(hook.flags) && len(*hook.flags[i]) > 0 {
+			setField(field.value, *hook.flags[i])
 		}
+		i++
 	})
 }
 
-func (self *ParamsHook) readFlagsFromStructMetadata(target interface{}) {
-	targetType := reflect.TypeOf(target).Elem()
-	for i := 0; i < targetType.NumField(); i++ {
-		currentField := targetType.Field(i)
-		fieldName := getFieldName(currentField)
-		self.flags = append(self.flags, flag.String(fieldName, "", fieldName))
-	}
+func (hook *ParamsHook) readFlagsFromStructMetadata(target interface{}) {
+	foreachField(target, func(field currentField) {
+		hook.flags = append(hook.flags, flag.String(field.name, "", field.name))
+	})
 }
 
+// EnvHook loads data from env vars
 type EnvHook struct{}
 
+// CreateEnvHook creates a hook which loads data from
+// env vars.
 func CreateEnvHook() EnvHook {
 	return EnvHook{}
 }
 
-func (self EnvHook) run(target interface{}) {
+func (hook EnvHook) run(target interface{}) {
 	foreachField(target, func(field currentField) {
-		env := os.Getenv(self.formatEnvVar(field.name))
+		env := os.Getenv(hook.formatEnvVar(field.name))
 		if len(env) > 0 {
 			setField(field.value, env)
 		}
 	})
 }
 
-func (self *EnvHook) formatEnvVar(name string) string {
+func (hook *EnvHook) formatEnvVar(name string) string {
 	upperName := strings.ToUpper(name)
 	return fmt.Sprintf("CONFIG_%s", upperName)
-}
-
-func getFieldName(field reflect.StructField) string {
-	currentTag := field.Tag.Get("paramName")
-	if len(currentTag) > 0 {
-		return currentTag
-	}
-	return field.Name
 }
 
 func setField(field reflect.Value, rawValue string) {
@@ -159,25 +169,48 @@ func setField(field reflect.Value, rawValue string) {
 		}
 		field.SetUint(i)
 	}
+}
 
+type target_t struct {
+	value  reflect.Value
+	typ    reflect.Type
+	prefix string
 }
 
 func foreachField(target interface{}, runAction func(currentField)) {
-	targetValue := reflect.ValueOf(target).Elem()
-	targetType := reflect.TypeOf(target).Elem()
-	for i := 0; i < targetValue.NumField(); i++ {
-		currentValue := targetValue.Field(i)
-		currentType := targetType.Field(i)
+	foreachFieldValue(target_t{
+		value:  reflect.ValueOf(target).Elem(),
+		typ:    reflect.TypeOf(target).Elem(),
+		prefix: "",
+	}, runAction)
+}
+
+func foreachFieldValue(target target_t, runAction func(currentField)) {
+	for i := 0; i < target.value.NumField(); i++ {
+		currentValue := target.value.Field(i)
+		currentType := target.typ.Field(i)
 		if currentType.Type.Kind() == reflect.Struct {
-			foreachField(currentValue.Elem(), runAction)
-		}
-		if currentValue.IsValid() && currentValue.CanAddr() && currentValue.CanSet() {
+			foreachFieldValue(target_t{
+				value:  currentValue,
+				typ:    currentType.Type,
+				prefix: currentType.Tag.Get("configPrefix"),
+			}, runAction)
+		} else if currentValue.IsValid() && currentValue.CanAddr() && currentValue.CanSet() {
 			currentName := getFieldName(currentType)
 			runAction(currentField{
-				value: currentValue,
-				name:  currentName,
-				index: i,
+				original: currentType,
+				value:    currentValue,
+				name:     fmt.Sprintf("%s%s", target.prefix, currentName),
+				index:    i,
 			})
 		}
 	}
+}
+
+func getFieldName(field reflect.StructField) string {
+	currentTag := field.Tag.Get("configName")
+	if len(currentTag) > 0 {
+		return currentTag
+	}
+	return field.Name
 }
